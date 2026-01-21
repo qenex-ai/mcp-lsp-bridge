@@ -1,131 +1,37 @@
 # MCP-LSP Bridge
 
-A Model Context Protocol (MCP) server that bridges to multiple Language Server Protocol (LSP) servers, exposing language intelligence capabilities as MCP tools for Claude and other AI assistants.
+A Model Context Protocol (MCP) server that bridges to multiple Language Server Protocol (LSP) servers, providing AI-powered code intelligence through Claude and other AI assistants.
+
+**Live Production Server**: `https://qenex.ai/mcp`
 
 ## Features
 
-- **Multi-Language Support**: Works with TypeScript, JavaScript, Python, Go, Rust, Java, C/C++, Ruby, PHP, HTML, CSS, JSON, YAML, and Bash
+- **10+ Language Servers**: TypeScript, Python, Go, Rust, C/C++, Ruby, PHP, YAML, Bash, HTML/CSS/JSON
 - **Code Intelligence**: Completions, hover info, go-to-definition, find references, diagnostics
 - **Refactoring**: Rename symbols, format documents, code actions (quick fixes)
-- **Navigation**: Workspace symbols, document outline
-- **Lazy Initialization**: LSP servers are started on-demand for better performance
-- **Concurrent Support**: Manage multiple language servers simultaneously
+- **HTTP & STDIO Transport**: Run locally or deploy as a remote service
+- **Session Management**: Resumable sessions with Server-Sent Events (SSE)
+- **Production Ready**: Includes Docker, systemd, and automated deployment scripts
 
-## Architecture
+## Quick Start
 
-```
-Claude → MCP Tools → Protocol Translator → Client Manager → LSP Clients → LSP Servers
-```
-
-## Installation
-
-### 1. Install the MCP-LSP Bridge
+### 1. Install
 
 ```bash
-cd /mcp-lsp-bridge
+git clone https://github.com/qenex-ai/mcp-lsp-bridge.git
+cd mcp-lsp-bridge
 npm install
 npm run build
 ```
 
-## Deployment Options
+### 2. Configure Claude
 
-The MCP-LSP Bridge can be used in two ways:
-
-### Local Mode (STDIO)
-Run as a local process that communicates via STDIO (standard input/output). This is the default mode and works well for personal use with Claude Code.
-
-### Remote Mode (HTTP)
-Run as an HTTP server that can be accessed remotely via URL. This allows multiple users/clients to connect to the same MCP server over the network.
-
-**Your MCP URL:** `https://qenex.ai/mcp`
-
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
-
-### 2. Install Language Servers
-
-Install the LSP servers for the languages you want to use:
-
-#### TypeScript/JavaScript
-```bash
-npm install -g typescript typescript-language-server
-```
-
-#### Python
-```bash
-pip install 'python-lsp-server[all]'
-```
-
-#### Go
-```bash
-go install golang.org/x/tools/gopls@latest
-```
-
-#### Rust
-```bash
-rustup component add rust-analyzer
-```
-
-#### C/C++
-Install clangd from your package manager or LLVM.
-
-#### Other Languages
-See the [Language Server Installation Guide](#language-server-installation-guide) below.
-
-### 3. Configure Claude Code
-
-#### Option A: Local STDIO Mode
-
-Add the MCP server to your Claude Code configuration:
+#### Option A: Use Public Server (Fastest)
 
 ```json
 {
   "mcpServers": {
     "lsp-bridge": {
-      "command": "node",
-      "args": ["/mcp-lsp-bridge/dist/index.js"],
-      "env": {
-        "WORKSPACE_ROOT": "/path/to/your/workspace"
-      }
-    }
-  }
-}
-```
-
-Or use `npm run dev` for development:
-
-```json
-{
-  "mcpServers": {
-    "lsp-bridge": {
-      "command": "npm",
-      "args": ["run", "dev"],
-      "cwd": "/mcp-lsp-bridge",
-      "env": {
-        "WORKSPACE_ROOT": "/path/to/your/workspace"
-      }
-    }
-  }
-}
-```
-
-#### Option B: Remote HTTP Mode
-
-**Start the HTTP server:**
-
-```bash
-# Development
-npm run dev:http
-
-# Production (after building)
-npm run start:http
-```
-
-**Configure Claude Code to use the remote server:**
-
-```json
-{
-  "mcpServers": {
-    "lsp-bridge-remote": {
       "url": "https://qenex.ai/mcp",
       "transport": "streamableHttp"
     }
@@ -133,327 +39,371 @@ npm run start:http
 }
 ```
 
-**Environment variables for HTTP server:**
+#### Option B: Run Locally (STDIO)
 
-Create a `.env` file (see `.env.example`):
-```bash
-PORT=3000
-HOST=0.0.0.0
-WORKSPACE_ROOT=/path/to/your/workspace
-ALLOWED_HOSTS=qenex.ai,localhost
-LOG_LEVEL=INFO
-```
-
-## Available Tools
-
-### Document Lifecycle
-
-#### `lsp_open_document`
-Open a document in the appropriate LSP server. Must be called before using other LSP tools on a file.
-
-**Arguments:**
-- `filePath` (string): Absolute file path to open
-
-**Example:**
-```
-lsp_open_document { "filePath": "/workspace/src/index.ts" }
-```
-
-#### `lsp_close_document`
-Close a document in the LSP server.
-
-**Arguments:**
-- `filePath` (string): Absolute file path to close
-
-### Code Intelligence
-
-#### `lsp_completion`
-Get code completions at a specific position.
-
-**Arguments:**
-- `filePath` (string): Absolute file path
-- `line` (number): Line number (zero-based)
-- `character` (number): Character offset (zero-based)
-
-**Example:**
-```
-lsp_completion {
-  "filePath": "/workspace/src/index.ts",
-  "line": 10,
-  "character": 5
+```json
+{
+  "mcpServers": {
+    "lsp-bridge": {
+      "command": "node",
+      "args": ["/path/to/mcp-lsp-bridge/dist/index.js"],
+      "env": {
+        "WORKSPACE_ROOT": "/path/to/your/workspace"
+      }
+    }
+  }
 }
 ```
 
-#### `lsp_hover`
-Get hover information (types, documentation) at a position.
+#### Option C: Deploy Your Own Server
 
-**Arguments:**
-- `filePath` (string): Absolute file path
-- `line` (number): Line number (zero-based)
-- `character` (number): Character offset (zero-based)
-
-#### `lsp_definition`
-Go to the definition of a symbol.
-
-**Arguments:**
-- `filePath` (string): Absolute file path
-- `line` (number): Line number (zero-based)
-- `character` (number): Character offset (zero-based)
-
-#### `lsp_references`
-Find all references to a symbol.
-
-**Arguments:**
-- `filePath` (string): Absolute file path
-- `line` (number): Line number (zero-based)
-- `character` (number): Character offset (zero-based)
-- `includeDeclaration` (boolean, optional): Include the declaration (default: true)
-
-#### `lsp_diagnostics`
-Get diagnostics (errors, warnings) for a document.
-
-**Arguments:**
-- `filePath` (string): Absolute file path
-
-### Refactoring & Editing
-
-#### `lsp_rename`
-Rename a symbol across the workspace.
-
-**Arguments:**
-- `filePath` (string): Absolute file path
-- `line` (number): Line number (zero-based)
-- `character` (number): Character offset (zero-based)
-- `newName` (string): New name for the symbol
-
-#### `lsp_format_document`
-Format an entire document.
-
-**Arguments:**
-- `filePath` (string): Absolute file path
-- `tabSize` (number, optional): Spaces per tab (default: 2)
-- `insertSpaces` (boolean, optional): Use spaces vs tabs (default: true)
-
-#### `lsp_code_action`
-Get available code actions (quick fixes, refactorings).
-
-**Arguments:**
-- `filePath` (string): Absolute file path
-- `startLine` (number): Start line (zero-based)
-- `startCharacter` (number): Start character (zero-based)
-- `endLine` (number): End line (zero-based)
-- `endCharacter` (number): End character (zero-based)
-
-### Navigation
-
-#### `lsp_workspace_symbols`
-Search for symbols across the workspace.
-
-**Arguments:**
-- `query` (string): Search query (empty for all symbols)
-
-#### `lsp_document_symbols`
-Get the symbol outline of a document.
-
-**Arguments:**
-- `filePath` (string): Absolute file path
-
-## Usage Examples
-
-### Example 1: Get TypeScript Completions
-
-```
-User: "Get completions for my TypeScript file at line 10, character 5"
-
-Claude uses:
-1. lsp_open_document { "filePath": "/workspace/src/app.ts" }
-2. lsp_completion { "filePath": "/workspace/src/app.ts", "line": 10, "character": 5 }
-```
-
-### Example 2: Find All References
-
-```
-User: "Find all places where the 'handleClick' function is used"
-
-Claude uses:
-1. lsp_open_document { "filePath": "/workspace/src/utils.ts" }
-2. lsp_references { "filePath": "/workspace/src/utils.ts", "line": 25, "character": 10 }
-```
-
-### Example 3: Rename a Variable
-
-```
-User: "Rename the variable 'oldName' to 'newName'"
-
-Claude uses:
-1. lsp_open_document { "filePath": "/workspace/src/main.py" }
-2. lsp_rename {
-     "filePath": "/workspace/src/main.py",
-     "line": 5,
-     "character": 4,
-     "newName": "newName"
-   }
-```
-
-## Language Server Installation Guide
-
-### TypeScript/JavaScript
 ```bash
-npm install -g typescript typescript-language-server
+# Quick deployment (automated)
+./commit-and-prepare.sh
+./DEPLOY_NOW.sh
+
+# Or manual deployment
+npm run dev:http  # Development
+npm run start:http  # Production
 ```
 
-### Python
+### 3. Install Language Servers
+
 ```bash
-pip install 'python-lsp-server[all]'
+# Automated installation (Linux/macOS)
+sudo ./scripts/install-lsp-servers.sh
+
+# Or install manually:
+npm install -g typescript typescript-language-server  # TypeScript
+pip install 'python-lsp-server[all]'  # Python
+sudo apt install clangd  # C/C++
+npm install -g yaml-language-server bash-language-server  # YAML, Bash
+npm install -g vscode-langservers-extracted  # HTML/CSS/JSON
 ```
 
-### Go
-```bash
-go install golang.org/x/tools/gopls@latest
-```
-Ensure `$GOPATH/bin` is in your PATH.
+## Production Deployment
 
-### Rust
-```bash
-rustup component add rust-analyzer
-```
+### Automated Deployment (Recommended)
 
-### Java
-Download Eclipse JDT Language Server from [eclipse.org/jdtls](https://projects.eclipse.org/projects/eclipse.jdt.ls)
+Deploy to your own server with one command:
 
-### C/C++
-**Ubuntu/Debian:**
 ```bash
-sudo apt install clangd
+./DEPLOY_NOW.sh
 ```
 
-**macOS:**
-```bash
-brew install llvm
-```
+This will:
+- Install dependencies (Node.js, Nginx, Certbot)
+- Build and deploy the service
+- Configure reverse proxy with SSL
+- Install language servers
+- Set up systemd for auto-restart
 
-### Ruby
-```bash
-gem install solargraph
-```
+### Manual Deployment
 
-### PHP
 ```bash
-composer global require felixfbecker/language-server
-```
-Ensure Composer's bin directory is in your PATH.
-
-### HTML/CSS/JSON
-```bash
-npm install -g vscode-langservers-extracted
-```
-
-### YAML
-```bash
-npm install -g yaml-language-server
-```
-
-### Bash
-```bash
-npm install -g bash-language-server
-```
-
-## Development
-
-### Run in Development Mode
-```bash
-npm run dev
-```
-
-### Build
-```bash
+# 1. Build
+npm install
 npm run build
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your settings
+
+# 3. Install language servers
+sudo ./scripts/install-lsp-servers.sh
+
+# 4. Deploy service (systemd)
+sudo ./scripts/deploy.sh system
+
+# 5. Configure Nginx + SSL
+sudo ./scripts/setup-nginx.sh yourdomain.com admin@yourdomain.com
+sudo certbot --nginx -d yourdomain.com
+
+# 6. Verify
+./scripts/verify-deployment.sh yourdomain.com 3000 true
+```
+
+### Docker Deployment
+
+```bash
+# Using docker-compose
+docker-compose up -d
+
+# Or build and run manually
+docker build -t mcp-lsp-bridge .
+docker run -d -p 3000:3000 \
+  -v /workspace:/workspace \
+  -e WORKSPACE_ROOT=/workspace \
+  mcp-lsp-bridge
 ```
 
 ### Environment Variables
 
-- `WORKSPACE_ROOT`: Set the workspace root directory (default: current directory)
-- `LOG_LEVEL`: Set logging level: DEBUG, INFO, WARN, ERROR (default: INFO)
+Create `.env` file:
+
+```bash
+PORT=3000
+HOST=0.0.0.0
+WORKSPACE_ROOT=/workspace
+ALLOWED_HOSTS=yourdomain.com,localhost
+LOG_LEVEL=INFO
+```
+
+## Available MCP Tools
+
+### Document Lifecycle
+
+- `lsp_open_document` - Open a document (required before other operations)
+- `lsp_close_document` - Close a document
+
+### Code Intelligence
+
+- `lsp_completion` - Get code completions
+- `lsp_hover` - Get hover information (types, docs)
+- `lsp_definition` - Go to definition
+- `lsp_references` - Find all references
+- `lsp_diagnostics` - Get errors and warnings
+
+### Refactoring
+
+- `lsp_rename` - Rename symbol across workspace
+- `lsp_format_document` - Format code
+- `lsp_code_action` - Get quick fixes and refactorings
+
+### Navigation
+
+- `lsp_workspace_symbols` - Search symbols across workspace
+- `lsp_document_symbols` - Get document outline
+
+## Usage Examples
+
+### Get TypeScript Completions
+
+```javascript
+// 1. Open document
+lsp_open_document({ "filePath": "/workspace/src/app.ts" })
+
+// 2. Get completions at line 10, character 5
+lsp_completion({
+  "filePath": "/workspace/src/app.ts",
+  "line": 10,
+  "character": 5
+})
+```
+
+### Find All References
+
+```python
+# Find where 'handleClick' is used
+lsp_open_document({ "filePath": "/workspace/src/utils.py" })
+lsp_references({
+  "filePath": "/workspace/src/utils.py",
+  "line": 25,
+  "character": 10
+})
+```
+
+### Rename Variable
+
+```go
+// Rename 'oldName' to 'newName' everywhere
+lsp_open_document({ "filePath": "/workspace/main.go" })
+lsp_rename({
+  "filePath": "/workspace/main.go",
+  "line": 15,
+  "character": 8,
+  "newName": "newName"
+})
+```
+
+## Supported Languages
+
+| Language | LSP Server | Installation |
+|----------|-----------|--------------|
+| TypeScript/JavaScript | typescript-language-server | `npm install -g typescript-language-server` |
+| Python | pylsp | `pip install 'python-lsp-server[all]'` |
+| Go | gopls | `go install golang.org/x/tools/gopls@latest` |
+| Rust | rust-analyzer | `rustup component add rust-analyzer` |
+| C/C++ | clangd | `sudo apt install clangd` |
+| Ruby | solargraph | `gem install solargraph` |
+| PHP | intelephense | `npm install -g intelephense` |
+| YAML | yaml-language-server | `npm install -g yaml-language-server` |
+| Bash | bash-language-server | `npm install -g bash-language-server` |
+| HTML/CSS/JSON | vscode-langservers | `npm install -g vscode-langservers-extracted` |
+
+## Architecture
+
+```
+Claude → MCP Protocol → HTTP/STDIO Transport → MCP-LSP Bridge → LSP Clients → Language Servers
+```
+
+### Key Components
+
+- **HTTP Server** (`http-server-simple.ts`): StreamableHTTP transport with SSE
+- **STDIO Server** (`index.ts`): Standard input/output transport
+- **Client Manager**: Manages LSP client lifecycle
+- **Protocol Translator**: Converts MCP tools to LSP requests
+- **Session Store**: In-memory event storage for resumability
+
+## Service Management
+
+### Systemd (Linux)
+
+```bash
+# Start/stop/restart
+sudo systemctl start mcp-lsp-bridge
+sudo systemctl stop mcp-lsp-bridge
+sudo systemctl restart mcp-lsp-bridge
+
+# View logs
+sudo journalctl -u mcp-lsp-bridge -f
+
+# Enable auto-start on boot
+sudo systemctl enable mcp-lsp-bridge
+```
+
+### Health Monitoring
+
+```bash
+# Local health check
+curl http://localhost:3000/health
+
+# Public health check
+curl https://qenex.ai/mcp -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"ping","id":1}'
+```
+
+## Security
+
+Production deployment includes:
+
+- ✅ HTTPS/TLS encryption (Let's Encrypt)
+- ✅ DNS rebinding protection
+- ✅ Web Application Firewall (WAF) rules
+- ✅ Security headers (HSTS, CSP, X-Frame-Options)
+- ✅ Systemd security hardening
+- ✅ Non-root execution (www-data user)
 
 ## Troubleshooting
 
 ### LSP Server Not Found
 
-If you see "LSP server not found" errors, ensure the language server is installed and in your PATH:
-
 ```bash
-# Check if the command is available
+# Verify language server is installed
 which typescript-language-server
 which pylsp
 which gopls
+
+# Add to PATH if needed
+export PATH=$PATH:/usr/local/bin:$HOME/go/bin
 ```
 
 ### Document Must Be Opened First
 
-Most LSP operations require a document to be opened first:
+Always call `lsp_open_document` before other operations:
+
+```javascript
+lsp_open_document({ "filePath": "/workspace/file.ts" })
+lsp_completion({ "filePath": "/workspace/file.ts", ... })
+```
+
+### Connection Timeout
+
+For remote servers, ensure:
+- Port 3000 (or configured port) is open
+- Firewall allows HTTPS (443)
+- DNS is properly configured
+- SSL certificate is valid
+
+### Service Won't Start
+
+```bash
+# Check logs
+sudo journalctl -u mcp-lsp-bridge -n 50
+
+# Verify workspace exists
+ls -la /workspace
+
+# Check port availability
+sudo lsof -i :3000
+```
+
+## Development
+
+### Run in Development Mode
+
+```bash
+# STDIO mode
+npm run dev
+
+# HTTP mode
+npm run dev:http
+```
+
+### Build
+
+```bash
+npm run build
+```
+
+### Test
+
+```bash
+# Test local server
+./scripts/test-server.sh
+
+# Test deployed server
+./scripts/verify-deployment.sh yourdomain.com 3000 true
+```
+
+## Project Structure
 
 ```
-lsp_open_document { "filePath": "/path/to/file.ts" }
+mcp-lsp-bridge/
+├── src/
+│   ├── index.ts              # STDIO entry point
+│   ├── http-server-simple.ts # HTTP server
+│   ├── server.ts             # Core MCP server
+│   ├── client-manager.ts     # LSP client lifecycle
+│   ├── protocol-translator.ts # MCP ↔ LSP conversion
+│   └── config/               # LSP server configurations
+├── scripts/
+│   ├── deploy.sh             # Deployment automation
+│   ├── install-lsp-servers.sh # Install language servers
+│   ├── setup-nginx.sh        # Nginx + SSL setup
+│   └── verify-deployment.sh  # Health checks
+├── docker-compose.yml        # Docker orchestration
+├── Dockerfile                # Container image
+└── mcp-lsp-bridge.service    # Systemd service
 ```
-
-### Timeouts
-
-If requests timeout, the LSP server may be busy analyzing the workspace. Try:
-1. Waiting for the initial workspace analysis to complete
-2. Using a smaller workspace
-3. Checking LSP server logs
-
-### Unsupported File Extension
-
-The server only supports file extensions configured in `src/config/lsp-servers.ts`. To add support for a new language:
-
-1. Install the LSP server
-2. Add configuration to `lsp-servers.ts`
-3. Rebuild the project
-
-## Technical Details
-
-### Position Indexing
-
-All line and character positions are **zero-based**:
-- First line: `line: 0`
-- First character: `character: 0`
-
-### Document Synchronization
-
-- Documents use **full synchronization** (entire document content sent on changes)
-- Documents must be explicitly opened with `lsp_open_document`
-- Documents should be closed with `lsp_close_document` when done
-
-### LSP Server Lifecycle
-
-- LSP servers are started **lazily** on first use
-- One LSP server process per language
-- Servers are kept alive for the session
-- Graceful shutdown on SIGINT/SIGTERM
-
-### Supported LSP Features
-
-- ✅ Completion (textDocument/completion)
-- ✅ Hover (textDocument/hover)
-- ✅ Definition (textDocument/definition)
-- ✅ References (textDocument/references)
-- ✅ Diagnostics (textDocument/diagnostic)
-- ✅ Rename (textDocument/rename)
-- ✅ Formatting (textDocument/formatting)
-- ✅ Code Action (textDocument/codeAction)
-- ✅ Workspace Symbols (workspace/symbol)
-- ✅ Document Symbols (textDocument/documentSymbol)
-
-## License
-
-MIT
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or pull request.
+Contributions welcome! Please:
 
-## Acknowledgments
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
-- Built with [@modelcontextprotocol/sdk](https://github.com/modelcontextprotocol/sdk)
-- Uses [vscode-languageserver-protocol](https://github.com/microsoft/vscode-languageserver-node)
+## License
+
+MIT License - see LICENSE file for details
+
+## Links
+
+- **Repository**: https://github.com/qenex-ai/mcp-lsp-bridge
+- **Live Server**: https://qenex.ai/mcp
+- **MCP Documentation**: https://modelcontextprotocol.io
+- **LSP Specification**: https://microsoft.github.io/language-server-protocol
+
+## Support
+
+- **Issues**: https://github.com/qenex-ai/mcp-lsp-bridge/issues
+- **Discussions**: https://github.com/qenex-ai/mcp-lsp-bridge/discussions
+
+---
+
+Built with ❤️ using [Model Context Protocol](https://modelcontextprotocol.io) and [Language Server Protocol](https://microsoft.github.io/language-server-protocol)
