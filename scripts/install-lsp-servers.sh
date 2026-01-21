@@ -49,7 +49,7 @@ echo ""
 echo "2. Python Language Server"
 echo "-------------------------"
 install_if_missing "Python LSP Server" \
-    "pip3 install 'python-lsp-server[all]'" \
+    "pip3 install 'python-lsp-server[all]' --break-system-packages" \
     "command -v pylsp"
 
 echo ""
