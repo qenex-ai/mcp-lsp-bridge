@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  mcp-lsp-bridge:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount your workspace directory
+      - /path/to/your/workspace:/workspace
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - WORKSPACE_ROOT=/workspace
+      - ALLOWED_HOSTS=qenex.ai,www.qenex.ai,localhost
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    container_name: mcp-lsp-bridge
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

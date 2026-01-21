@@ -27,6 +27,20 @@ npm install
 npm run build
 ```
 
+## Deployment Options
+
+The MCP-LSP Bridge can be used in two ways:
+
+### Local Mode (STDIO)
+Run as a local process that communicates via STDIO (standard input/output). This is the default mode and works well for personal use with Claude Code.
+
+### Remote Mode (HTTP)
+Run as an HTTP server that can be accessed remotely via URL. This allows multiple users/clients to connect to the same MCP server over the network.
+
+**Your MCP URL:** `https://qenex.ai/mcp`
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
+
 ### 2. Install Language Servers
 
 Install the LSP servers for the languages you want to use:
@@ -59,6 +73,8 @@ See the [Language Server Installation Guide](#language-server-installation-guide
 
 ### 3. Configure Claude Code
 
+#### Option A: Local STDIO Mode
+
 Add the MCP server to your Claude Code configuration:
 
 ```json
@@ -90,6 +106,42 @@ Or use `npm run dev` for development:
     }
   }
 }
+```
+
+#### Option B: Remote HTTP Mode
+
+**Start the HTTP server:**
+
+```bash
+# Development
+npm run dev:http
+
+# Production (after building)
+npm run start:http
+```
+
+**Configure Claude Code to use the remote server:**
+
+```json
+{
+  "mcpServers": {
+    "lsp-bridge-remote": {
+      "url": "https://qenex.ai/mcp",
+      "transport": "streamableHttp"
+    }
+  }
+}
+```
+
+**Environment variables for HTTP server:**
+
+Create a `.env` file (see `.env.example`):
+```bash
+PORT=3000
+HOST=0.0.0.0
+WORKSPACE_ROOT=/path/to/your/workspace
+ALLOWED_HOSTS=qenex.ai,localhost
+LOG_LEVEL=INFO
 ```
 
 ## Available Tools

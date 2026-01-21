@@ -1,0 +1,32 @@
+[Unit]
+Description=MCP-LSP Bridge HTTP Server
+After=network.target
+Documentation=https://github.com/modelcontextprotocol/typescript-sdk
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/mcp-lsp-bridge
+EnvironmentFile=/opt/mcp-lsp-bridge/.env
+ExecStart=/usr/bin/node /opt/mcp-lsp-bridge/dist/http-server-simple.js
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcp-lsp-bridge
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/workspace
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
