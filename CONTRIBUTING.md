@@ -24,12 +24,12 @@ This project follows a standard code of conduct:
 
 ## Getting Started
 
-1. Fork the repository on GitHub
+1. Fork the repository on GitLab or GitHub
 2. Clone your fork locally
 3. Set up the development environment
 4. Create a feature branch
 5. Make your changes
-6. Submit a pull request
+6. Submit a merge request (GitLab) or pull request (GitHub)
 
 ## Development Setup
 
@@ -397,15 +397,17 @@ npm run build
 
 ### CI/CD Pipeline
 
-GitHub Actions automatically runs:
+GitLab CI/CD automatically runs:
 
 1. Type checking
 2. Linting
 3. Build
-4. Tests
-5. Coverage report
-6. Security audit
+4. Tests (Node.js 18, 20, 22)
+5. Coverage report (with GitLab visualization)
+6. Security audit (npm audit + Trivy)
 7. Docker build
+
+**Note:** GitHub Actions is also configured but may be disabled
 
 ## Questions?
 

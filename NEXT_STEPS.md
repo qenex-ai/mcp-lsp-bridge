@@ -145,65 +145,28 @@ Coverage Report:
 
 ## High Priority Next Steps
 
-### Add CI/CD Pipeline (1-2 hours)
+### CI/CD Pipeline (Already Configured)
 
-Create GitHub Actions workflow to automate testing:
+**GitLab CI/CD** is already configured in `.gitlab-ci.yml`:
 
 ```bash
-# Create workflow directory
-mkdir -p .github/workflows
+# View the pipeline configuration
+cat .gitlab-ci.yml
 
-# Create CI workflow file
-cat > .github/workflows/ci.yml << 'EOF'
-name: CI
+# Push to trigger the pipeline
+git push origin main
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Type check
-        run: npm run typecheck
-
-      - name: Build
-        run: npm run build
-
-      - name: Run tests
-        run: npm test
-
-      - name: Generate coverage
-        run: npm run test:coverage
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        if: success()
-        with:
-          files: ./coverage/coverage-final.json
-EOF
-
-# Commit CI/CD workflow
-git add .github/workflows/ci.yml
-git commit -m "ci: Add GitHub Actions workflow for automated testing"
-git push
+# Monitor pipeline at: https://gitlab.com/your-username/mcp-lsp-bridge/-/pipelines
 ```
+
+**Pipeline includes:**
+- Testing on Node.js 18, 20, and 22
+- Type checking, linting, building
+- Coverage reporting (with GitLab visualization)
+- Security scanning (npm audit + Trivy)
+- Docker build verification
+
+**Note:** GitHub Actions is also configured but disabled for your account
 
 ### Add ESLint for Code Quality (30 minutes)
 
@@ -279,8 +242,8 @@ Before deploying or publishing:
 - [ ] `npm run test:coverage` - Coverage ≥70%
 - [ ] `npm run typecheck` - No TypeScript errors
 - [ ] `npm run build` - Builds successfully
-- [ ] `npm run lint` - No linting errors (after adding ESLint)
-- [ ] GitHub Actions CI passing (after adding workflow)
+- [ ] `npm run lint` - No linting errors
+- [ ] GitLab CI/CD pipeline passing (configured in `.gitlab-ci.yml`)
 - [ ] Documentation updated (if needed)
 
 ---

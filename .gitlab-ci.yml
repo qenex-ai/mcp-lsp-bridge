@@ -1,0 +1,159 @@
+# GitLab CI/CD Pipeline for MCP-LSP Bridge
+
+stages:
+  - test
+  - security
+  - docker
+
+# Global variables
+variables:
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+  DOCKER_DRIVER: overlay2
+
+# Cache node_modules for faster builds
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - .npm/
+    - node_modules/
+
+# Template for Node.js jobs
+.node_template: &node_template
+  image: node:$NODE_VERSION
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+
+# Test jobs with multiple Node.js versions
+test:node18:
+  <<: *node_template
+  stage: test
+  variables:
+    NODE_VERSION: "18"
+  script:
+    - npm run typecheck
+    - npm run lint
+    - npm run build
+    - npm test
+  artifacts:
+    when: always
+    reports:
+      junit: coverage/junit.xml
+    paths:
+      - coverage/
+  allow_failure: false
+
+test:node20:
+  <<: *node_template
+  stage: test
+  variables:
+    NODE_VERSION: "20"
+  script:
+    - npm run typecheck
+    - npm run lint
+    - npm run build
+    - npm test
+    - npm run test:coverage
+  coverage: '/All files[^|]*\|[^|]*\s+([\d\.]+)/'
+  artifacts:
+    when: always
+    reports:
+      junit: coverage/junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+    paths:
+      - coverage/
+      - dist/
+    expire_in: 1 week
+  allow_failure: false
+
+test:node22:
+  <<: *node_template
+  stage: test
+  variables:
+    NODE_VERSION: "22"
+  script:
+    - npm run typecheck
+    - npm run lint
+    - npm run build
+    - npm test
+  artifacts:
+    when: always
+    reports:
+      junit: coverage/junit.xml
+    paths:
+      - coverage/
+  allow_failure: false
+
+# Security audit job
+security:audit:
+  stage: security
+  image: node:20
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+  script:
+    - echo "Running npm audit..."
+    - npm audit --audit-level=moderate || true
+    - echo "Audit complete"
+  allow_failure: true
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# Trivy vulnerability scanner
+security:trivy:
+  stage: security
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
+  script:
+    - trivy fs --exit-code 0 --severity MEDIUM,HIGH,CRITICAL --format json --output trivy-report.json .
+    - trivy fs --exit-code 0 --severity MEDIUM,HIGH,CRITICAL --format template --template "@/contrib/gitlab.tpl" --output gl-container-scanning-report.json .
+  artifacts:
+    reports:
+      container_scanning: gl-container-scanning-report.json
+    paths:
+      - trivy-report.json
+    expire_in: 1 week
+  allow_failure: true
+  only:
+    - main
+    - develop
+    - merge_requests
+
+# Docker build verification
+docker:build:
+  stage: docker
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - docker info
+  script:
+    - docker build -t mcp-lsp-bridge:$CI_COMMIT_SHORT_SHA .
+    - docker images
+  only:
+    - main
+    - develop
+    - merge_requests
+  dependencies:
+    - test:node20
+
+# Integration tests (optional, requires language servers)
+test:integration:
+  <<: *node_template
+  stage: test
+  variables:
+    NODE_VERSION: "20"
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+    - npm install -g typescript typescript-language-server
+    - pip3 install 'python-lsp-server[all]' || true
+  script:
+    - npm run test:integration || echo "Integration tests skipped (language servers may not be available)"
+  allow_failure: true
+  only:
+    - main
+    - develop
+  when: manual

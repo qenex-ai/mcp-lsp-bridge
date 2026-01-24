@@ -41,16 +41,18 @@ In this session, we've transformed the project from a functional but untested co
 
 ### ✓ CI/CD Pipeline (Task 4)
 
-**GitHub Actions Workflow:**
+**GitLab CI/CD Pipeline:**
 - Multi-version Node.js testing (18, 20, 22)
 - Automated type checking
 - Automated linting
 - Automated testing with coverage
 - Security audit (npm audit + Trivy)
 - Docker build verification
-- Codecov integration
+- Coverage visualization in GitLab
 
-**File:** `.github/workflows/ci.yml` (100+ lines)
+**Files:**
+- `.gitlab-ci.yml` (primary CI/CD configuration)
+- `.github/workflows/ci.yml` (GitHub Actions - currently disabled)
 
 ### ✓ Code Quality Tools (Task 5)
 
@@ -273,8 +275,8 @@ d069e41 feat: Add comprehensive test suite with Vitest
 ### High Priority (This Week)
 
 6. **Verify CI/CD** (watch it run)
-   - Go to GitHub Actions tab
-   - Watch workflow execution
+   - Go to GitLab CI/CD > Pipelines tab
+   - Watch pipeline execution
    - Verify all jobs pass
 
 7. **Run Linter** (5 minutes)
