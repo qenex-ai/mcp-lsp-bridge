@@ -9,7 +9,11 @@
     "dev": "tsx src/index.ts",
     "dev:http": "tsx src/http-server-simple.ts",
     "start": "node dist/index.js",
-    "start:http": "node dist/http-server-simple.js"
+    "start:http": "node dist/http-server-simple.js",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "mcp",
@@ -29,7 +33,9 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
+    "@vitest/ui": "^2.1.8",
     "tsx": "^4.0.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.8"
   }
 }
