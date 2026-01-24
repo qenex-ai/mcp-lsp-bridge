@@ -34,3 +34,9 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Project context manager metadata
+.claude/
+
+# Separate plugin projects
+devops-plugin/
