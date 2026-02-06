@@ -42,7 +42,10 @@ async function main() {
             depths: []
         };
 
-        function processChunk(chunk: SemanticChunk, depth: number) {
+        const maxDepthItems: { name: string, depth: number, file: string }[] = [];
+        const maxChildrenItems: { name: string, count: number, file: string }[] = [];
+
+        function processChunk(chunk: SemanticChunk, depth: number, filePath: string) {
             stats.totalChunks++;
             stats.totalChars += chunk.content.length;
             stats.chunkSizes.push(chunk.content.length);
@@ -50,18 +53,29 @@ async function main() {
 
             stats.kindCounts[chunk.kind] = (stats.kindCounts[chunk.kind] || 0) + 1;
 
-            if (chunk.children) {
+            if (depth > 5) { // Track deep items
+                maxDepthItems.push({ name: chunk.name, depth, file: filePath });
+            }
+
+            if (chunk.children && chunk.children.length > 0) {
+                if (chunk.children.length > 5) { // Track complex items
+                    maxChildrenItems.push({ name: chunk.name, count: chunk.children.length, file: filePath });
+                }
                 for (const child of chunk.children) {
-                    processChunk(child, depth + 1);
+                    processChunk(child, depth + 1, filePath);
                 }
             }
         }
 
         for (const file of index) {
             for (const chunk of file.chunks) {
-                processChunk(chunk, 1);
+                processChunk(chunk, 1, file.filePath);
             }
         }
+
+        // Sort and slice top lists
+        maxDepthItems.sort((a, b) => b.depth - a.depth);
+        maxChildrenItems.sort((a, b) => b.count - a.count);
 
         // Calculations
         const avgChunkSize = stats.totalChunks > 0 ? stats.totalChars / stats.totalChunks : 0;
@@ -87,6 +101,12 @@ async function main() {
 ## Hierarchy Stats
 - **Average Depth**: ${avgDepth.toFixed(2)}
 - **Max Depth**: ${maxDepth}
+
+### Deepest Semantic Structures
+${maxDepthItems.slice(0, 5).map(i => `- [Depth ${i.depth}] **${i.name}** in \`${i.file}\``).join('\n')}
+
+### Most Linked Chunks (Detailed)
+${maxChildrenItems.slice(0, 5).map(i => `- [Children ${i.count}] **${i.name}** in \`${i.file}\``).join('\n')}
 
 ## Chunk Type Distribution
 ${Object.entries(stats.kindCounts)

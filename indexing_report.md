@@ -15,6 +15,20 @@
 - **Average Depth**: 3.04
 - **Max Depth**: 9
 
+### Deepest Semantic Structures
+- [Depth 9] **valueSet** in `src/lsp/base-client.ts`
+- [Depth 8] **codeActionKind** in `src/lsp/base-client.ts`
+- [Depth 8] **commitCharactersSupport** in `src/lsp/base-client.ts`
+- [Depth 8] **documentationFormat** in `src/lsp/base-client.ts`
+- [Depth 8] **snippetSupport** in `src/lsp/base-client.ts`
+
+### Most Linked Chunks (Detailed)
+- [Children 139] **packages** in `package-lock.json`
+- [Children 70] **lspServerConfigs** in `src/config/lsp-servers.ts`
+- [Children 45] **tools** in `src/server.ts`
+- [Children 28] **dependencies** in `package-lock.json`
+- [Children 26] **optionalDependencies** in `package-lock.json`
+
 ## Chunk Type Distribution
 - **String**: 1025
 - **Property**: 676
