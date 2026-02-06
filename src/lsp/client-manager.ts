@@ -188,7 +188,7 @@ export class ClientManager {
    * Get the workspace root
    * @returns Workspace root path
    */
-  getWorkspaceRoot(): string {
+  get workspaceRootPath(): string {
     return this.workspaceRoot;
   }
 

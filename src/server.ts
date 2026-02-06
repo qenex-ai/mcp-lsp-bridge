@@ -52,6 +52,16 @@ import {
   handleWorkspaceSymbols,
   handleDocumentSymbols,
 } from './tools/symbols.js';
+import {
+  ProjectIndexArgsSchema,
+  ReadAndChunkArgsSchema,
+  handleProjectIndex,
+  handleReadAndChunk,
+} from './tools/indexing.js';
+import {
+  SemanticChunkArgsSchema,
+  handleSemanticChunk,
+} from './tools/semantic-chunking.js';
 
 /**
  * Create and configure the MCP server
@@ -317,6 +327,64 @@ export function createServer(workspaceRoot?: string): Server {
             required: ['filePath'],
           },
         },
+        {
+          name: 'project_index',
+          description: 'Recursively index the project workspace to discover files and directories.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              rootPath: {
+                type: 'string',
+                description: 'Root directory to start indexing from (default: workspace root)',
+              },
+              maxDepth: {
+                type: 'number',
+                description: 'Maximum recursion depth (default: 10)',
+              },
+              exclude: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Directory names to exclude (node_modules, .git, etc.)',
+              },
+            },
+          },
+        },
+        {
+          name: 'read_and_chunk',
+          description: 'Read a file and split it into text chunks for processing.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              filePath: {
+                type: 'string',
+                description: 'Absolute file path to read',
+              },
+              chunkSize: {
+                type: 'number',
+                description: 'Character count per chunk (default: 2000)',
+              },
+              overlap: {
+                type: 'number',
+                description: 'Character overlap between chunks (default: 200)',
+              },
+            },
+            required: ['filePath'],
+          },
+        },
+        {
+          name: 'semantic_chunk',
+          description: 'Parse a document into semantic chunks based on the code structure (classes, functions, etc.).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              filePath: {
+                type: 'string',
+                description: 'Absolute file path to chunk',
+              },
+            },
+            required: ['filePath'],
+          },
+        },
       ],
     };
   });
@@ -398,6 +466,24 @@ export function createServer(workspaceRoot?: string): Server {
         case 'lsp_document_symbols': {
           const parsed = DocumentSymbolsArgsSchema.parse(args);
           result = await handleDocumentSymbols(parsed, clientManager);
+          break;
+        }
+
+        case 'project_index': {
+          const parsed = ProjectIndexArgsSchema.parse(args);
+          result = await handleProjectIndex(parsed, clientManager.workspaceRootPath);
+          break;
+        }
+
+        case 'read_and_chunk': {
+          const parsed = ReadAndChunkArgsSchema.parse(args);
+          result = await handleReadAndChunk(parsed);
+          break;
+        }
+
+        case 'semantic_chunk': {
+          const parsed = SemanticChunkArgsSchema.parse(args);
+          result = await handleSemanticChunk(parsed, clientManager);
           break;
         }
 
