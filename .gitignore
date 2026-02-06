@@ -34,3 +34,9 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Semantic Indexing Output (Large files)
+semantic_index.json
+semantic_index.ndjson
+indexing.log
+indexing_report.md

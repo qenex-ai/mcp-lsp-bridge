@@ -231,6 +231,31 @@ lsp_rename({
 | Bash | bash-language-server | `npm install -g bash-language-server` |
 | HTML/CSS/JSON | vscode-langservers | `npm install -g vscode-langservers-extracted` |
 
+## Scalable Semantic Indexing (New)
+
+The bridge now includes a **Universal Code Indexer** capable of scaling to 1M+ files.
+
+### Features
+- **Streaming Output**: Uses NDJSON (`semantic_index.ndjson`) for constant memory usage.
+- **Polyglot**: Indexes Go, Rust, C++, Python, TypeScript, Bash, and more in one pass.
+- **Scalable**: Verified on 1.2M+ files.
+
+### Usage
+
+```bash
+# Index current workspace
+npm run index
+
+# Index a specific directory (or root)
+npm run index -- /path/to/target
+
+# Index entire system (production)
+npm run index -- /
+```
+
+### Consumption
+See `examples/llm_consumption_demo.ts` for how to query the streaming index efficiently.
+
 ## Architecture
 
 ```

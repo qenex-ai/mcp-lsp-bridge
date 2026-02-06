@@ -9,7 +9,8 @@
     "dev": "tsx src/index.ts",
     "dev:http": "tsx src/http-server-simple.ts",
     "start": "node dist/index.js",
-    "start:http": "node dist/http-server-simple.js"
+    "start:http": "node dist/http-server-simple.js",
+    "index": "tsx scripts/semantic_index_runner.ts"
   },
   "keywords": [
     "mcp",
