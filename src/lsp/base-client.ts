@@ -25,7 +25,7 @@ export class BaseLSPClient extends EventEmitter {
     timeout: NodeJS.Timeout;
   }> = new Map();
 
-  private buffer: string = '';
+  private buffer: Buffer = Buffer.alloc(0);
   private workspaceRoot: string;
 
   constructor(config: LSPServerConfig, workspaceRoot: string) {
@@ -231,36 +231,49 @@ export class BaseLSPClient extends EventEmitter {
    * Handle incoming data from the LSP server
    */
   private handleData(data: Buffer): void {
-    this.buffer += data.toString('utf8');
+    this.buffer = Buffer.concat([this.buffer, data]);
 
     while (true) {
-      // Look for Content-Length header
-      const headerMatch = this.buffer.match(/Content-Length: (\d+)\r\n/);
-      if (!headerMatch) {
+      // Look for header separator \r\n\r\n
+      const separatorIndex = this.buffer.indexOf('\r\n\r\n');
+      if (separatorIndex === -1) {
         break;
       }
 
-      const contentLength = parseInt(headerMatch[1], 10);
-      const headerEnd = this.buffer.indexOf('\r\n\r\n');
+      // Read header part
+      const headerBuffer = this.buffer.subarray(0, separatorIndex);
+      const headerString = headerBuffer.toString('utf8');
 
-      if (headerEnd === -1) {
-        break;
+      // Look for Content-Length
+      const lengthMatch = headerString.match(/Content-Length: (\d+)/i);
+      if (!lengthMatch) {
+        // Should not happen in healthy LSP, but maybe we have partial header? 
+        // Actually if we have \r\n\r\n but no Content-Length, it's a protocol error or log noise.
+        // We'll discard the header and try to recover or just break? 
+        // Ideally we log and assume 0? or drop header.
+        // Let's assume valid LSP for now, if match fails, maybe it's not a message header.
+        // But we found the separator. Let's discard this block to progress.
+        logger.warn('Missing Content-Length in header. Dropping header.');
+        this.buffer = this.buffer.subarray(separatorIndex + 4);
+        continue;
       }
 
-      const messageStart = headerEnd + 4;
+      const contentLength = parseInt(lengthMatch[1], 10);
+      const messageStart = separatorIndex + 4;
       const messageEnd = messageStart + contentLength;
 
       if (this.buffer.length < messageEnd) {
-        // Don't have the full message yet
+        // Wait for more data
         break;
       }
 
-      // Extract the message
-      const messageText = this.buffer.substring(messageStart, messageEnd);
-      this.buffer = this.buffer.substring(messageEnd);
+      // Extract message
+      const messageBuffer = this.buffer.subarray(messageStart, messageEnd);
+      this.buffer = this.buffer.subarray(messageEnd); // Remove processed message from buffer
 
       try {
-        const message = JSON.parse(messageText);
+        const messageString = messageBuffer.toString('utf8');
+        const message = JSON.parse(messageString);
         this.handleMessage(message);
       } catch (error) {
         logger.error(`Failed to parse LSP message from ${this.config.language}:`, error);
