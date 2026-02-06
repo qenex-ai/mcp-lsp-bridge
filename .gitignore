@@ -40,3 +40,9 @@ semantic_index.json
 semantic_index.ndjson
 indexing.log
 indexing_report.md
+
+# Project context manager metadata
+.claude/
+
+# Separate plugin projects
+devops-plugin/
