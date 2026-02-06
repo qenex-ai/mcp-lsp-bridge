@@ -1,48 +1,58 @@
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { ClientManager } from '../src/lsp/client-manager.js';
 import { handleSemanticChunk } from '../src/tools/semantic-chunking.js';
 import { logger } from '../src/utils/logger.js';
-import { DataNode } from 'ant-design-pro/lib/utils/types.js'; // This seems unused/incorrect, removing
-
-// Import the configuration to get supported extensions
-import { getSupportedExtensions, isExtensionSupported } from '../src/config/lsp-servers.js';
+import { getSupportedExtensions } from '../src/config/lsp-servers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function main() {
-    const workspaceRoot = path.resolve(__dirname, '..');
-    const clientManager = new ClientManager(workspaceRoot);
+// Concurrency limit for indexing
+const CONCURRENCY_LIMIT = 4;
 
-    // Get all supported extensions from the config
+async function main() {
+    const defaultRoot = path.resolve(__dirname, '..');
+    const workspaceRoot = process.argv[2] ? path.resolve(process.argv[2]) : defaultRoot;
+
+    // Ensure we don't accidentally index root / if not intended, but user asked for it. 
+    // We should be careful about permissions.
+
+    const clientManager = new ClientManager(workspaceRoot);
     const supportedExtensions = new Set(getSupportedExtensions());
 
-    logger.info(`Starting semantic indexing for root: ${workspaceRoot}`);
-    logger.info(`Supported extensions: ${Array.from(supportedExtensions).join(', ')}`);
+    logger.info(`Starting scalable semantic indexing for root: ${workspaceRoot}`);
+
+    // Output file (NDJSON)
+    const outputPath = path.join(workspaceRoot, 'semantic_index.ndjson');
+    // Clear existing file or create new
+    await fs.writeFile(outputPath, '');
+    const outputStream = fsSync.createWriteStream(outputPath, { flags: 'a' });
 
     try {
         const files: string[] = [];
+        const excludeDirs = new Set([
+            'node_modules', '.git', 'dist', 'build', 'coverage', '.vscode', '.gemini',
+            'proc', 'sys', 'dev', 'run', 'boot', 'mnt', 'media', 'tmp', 'var', 'etc', 'usr', 'opt', 'srv', 'bin', 'sbin', 'lib', 'lib64'
+        ]);
 
-        // Exclude patterns
-        const excludeDirs = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.vscode', '.gemini']);
-
+        // Walk function
         async function walk(dir: string) {
             try {
                 const entries = await fs.readdir(dir, { withFileTypes: true });
                 for (const entry of entries) {
                     const fullPath = path.join(dir, entry.name);
-
                     if (entry.isDirectory()) {
-                        if (!excludeDirs.has(entry.name)) {
-                            await walk(fullPath);
-                        }
+                        if (!excludeDirs.has(entry.name)) await walk(fullPath);
                     } else if (entry.isFile()) {
                         const ext = path.extname(entry.name).toLowerCase();
                         if (supportedExtensions.has(ext)) {
-                            // Skip definition files if they are not the primary target? 
-                            // Keeping them for now as requested "all files"
+                            if (entry.name.endsWith('.ndjson') || entry.name.endsWith('.json') || entry.name.endsWith('.md')) {
+                                // Careful with our own outputs
+                                if (entry.name === 'semantic_index.ndjson' || entry.name === 'semantic_index.json' || entry.name === 'indexing_report.md') continue;
+                            }
                             files.push(fullPath);
                         }
                     }
@@ -55,42 +65,35 @@ async function main() {
         await walk(workspaceRoot);
         logger.info(`Found ${files.length} files to index.`);
 
-        // Index each file
-        const index = [];
         let completed = 0;
         let errors = 0;
 
-        for (const file of files) {
+        // Process files with concurrency limit
+        const processFile = async (file: string) => {
             try {
-                // logger.info(`Indexing (${completed + 1}/${files.length}): ${path.relative(workspaceRoot, file)}`);
-
-                // Call the semantic chunking handler
-                // We use a timeout to prevent hanging on a single file
                 const resultJson = await Promise.race([
                     handleSemanticChunk({ filePath: file }, clientManager),
-                    new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30000))
+                    new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 60000))
                 ]);
 
-                const chunks = JSON.parse(resultJson as string);
-
-                // Only add if we actually got chunks
+                const chunks = JSON.parse(resultJson);
                 if (chunks.length > 0) {
-                    index.push({
+                    const record = {
                         filePath: path.relative(workspaceRoot, file),
                         chunks: chunks
-                    });
-                } else {
-                    // logger.warn(`No chunks found for ${path.relative(workspaceRoot, file)}`);
+                    };
+                    // Write line to NDJSON
+                    const line = JSON.stringify(record) + '\n';
+                    if (!outputStream.write(line)) {
+                        // Handle backpressure if needed (simple await drain)
+                        await new Promise(resolve => outputStream.once('drain', resolve));
+                    }
                 }
-
             } catch (err) {
                 errors++;
-                const relPath = path.relative(workspaceRoot, file);
                 const msg = err instanceof Error ? err.message : String(err);
-                if (msg.includes('Unsupported file extension')) {
-                    // Verify logic, shouldn't happen if we filtered correctly
-                } else {
-                    logger.error(`Failed to index ${relPath}: ${msg}`);
+                if (!msg.includes('Unsupported file extension')) { // Ignore specific known noise
+                    logger.error(`Failed to index ${path.relative(workspaceRoot, file)}: ${msg}`);
                 }
             } finally {
                 completed++;
@@ -98,14 +101,25 @@ async function main() {
                     logger.info(`Progress: ${completed}/${files.length} (Errors: ${errors})`);
                 }
             }
-        }
+        };
 
-        // Save output
-        const outputPath = path.join(workspaceRoot, 'semantic_index.json');
-        await fs.writeFile(outputPath, JSON.stringify(index, null, 2));
+        // Execution helper
+        const runBatch = async () => {
+            const queue = [...files];
+            const workers = Array(CONCURRENCY_LIMIT).fill(null).map(async () => {
+                while (queue.length > 0) {
+                    const file = queue.shift();
+                    if (file) await processFile(file);
+                }
+            });
+            await Promise.all(workers);
+        };
 
+        await runBatch();
+
+        outputStream.end();
         logger.info(`Indexing complete. Saved to ${outputPath}`);
-        logger.info(`Total files indexed: ${index.length}/${files.length} (Errors: ${errors})`);
+        logger.info(`Total files processed: ${completed}/${files.length} (Errors: ${errors})`);
 
     } catch (err) {
         logger.error('Indexing failed:', err);

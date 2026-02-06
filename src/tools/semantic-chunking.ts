@@ -22,6 +22,7 @@ export interface SemanticChunk {
     };
     content: string;
     parent?: string;
+    hierarchy?: string[];
     children?: SemanticChunk[];
 }
 
@@ -92,12 +93,16 @@ export async function handleSemanticChunk(
             return [firstLine, ...middleLines, lastLine].join('\n');
         };
 
-        const processSymbol = (sym: any, parentName?: string): SemanticChunk => {
+        const processSymbol = (sym: any, parentName?: string, parentHierarchy: string[] = []): SemanticChunk => {
             // Handle both DocumentSymbol (has .range) and SymbolInformation (has .location.range)
             const range = sym.range || (sym.location && sym.location.range);
             // const selectionRange = sym.selectionRange || range; // Fallback - removed unused
 
             const kindName = SymbolKindNames[sym.kind] || 'Unknown';
+
+            // Get the minimal context line (first line of the symbol's range)
+            const contextLine = splitLines[range.start.line].trim();
+            const currentHierarchy = [...parentHierarchy, contextLine];
 
             const chunk: SemanticChunk = {
                 name: sym.name,
@@ -110,11 +115,12 @@ export async function handleSemanticChunk(
                     endChar: range.end.character
                 },
                 content: getText(range),
-                parent: parentName
+                parent: parentName,
+                hierarchy: parentHierarchy.length > 0 ? parentHierarchy : undefined
             };
 
             if (sym.children && sym.children.length > 0) {
-                chunk.children = sym.children.map((child: any) => processSymbol(child, sym.name));
+                chunk.children = sym.children.map((child: any) => processSymbol(child, sym.name, currentHierarchy));
             }
 
             return chunk;

@@ -1,0 +1,12 @@
+body {
+    background-color: #f0f0f0;
+}
+
+#app {
+    margin: 20px;
+    padding: 20px;
+}
+
+h1 {
+    color: #333;
+}

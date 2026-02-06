@@ -1,5 +1,6 @@
-import * as fs from 'fs/promises';
+import * as fs from 'fs';
 import * as path from 'path';
+import * as readline from 'readline';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -9,6 +10,7 @@ interface SemanticChunk {
     name: string;
     kind: string;
     content: string;
+    hierarchy?: string[];
     children?: SemanticChunk[];
 }
 
@@ -27,14 +29,18 @@ interface Stats {
 }
 
 async function main() {
-    const indexPath = path.join(__dirname, '..', 'semantic_index.json');
+    const indexPath = path.join(__dirname, '..', 'semantic_index.ndjson');
+    console.log(`Reading index from ${indexPath}...`);
 
     try {
-        const data = await fs.readFile(indexPath, 'utf-8');
-        const index: FileIndex[] = JSON.parse(data);
+        const fileStream = fs.createReadStream(indexPath);
+        const rl = readline.createInterface({
+            input: fileStream,
+            crlfDelay: Infinity
+        });
 
         const stats: Stats = {
-            totalFiles: index.length,
+            totalFiles: 0,
             totalChunks: 0,
             totalChars: 0,
             chunkSizes: [],
@@ -44,6 +50,8 @@ async function main() {
 
         const maxDepthItems: { name: string, depth: number, file: string }[] = [];
         const maxChildrenItems: { name: string, count: number, file: string }[] = [];
+        // We need to keep track of a few items for the sample, but not all of them to save memory
+        const sampleItems: { name: string, hierarchy: string[] }[] = [];
 
         function processChunk(chunk: SemanticChunk, depth: number, filePath: string) {
             stats.totalChunks++;
@@ -55,6 +63,10 @@ async function main() {
 
             if (depth > 5) { // Track deep items
                 maxDepthItems.push({ name: chunk.name, depth, file: filePath });
+                // Grab sample for report if we don't have enough
+                if (sampleItems.length < 3 && chunk.hierarchy) {
+                    sampleItems.push({ name: chunk.name, hierarchy: chunk.hierarchy });
+                }
             }
 
             if (chunk.children && chunk.children.length > 0) {
@@ -67,9 +79,16 @@ async function main() {
             }
         }
 
-        for (const file of index) {
-            for (const chunk of file.chunks) {
-                processChunk(chunk, 1, file.filePath);
+        for await (const line of rl) {
+            if (!line.trim()) continue;
+            try {
+                const fileIndex: FileIndex = JSON.parse(line);
+                stats.totalFiles++;
+                for (const chunk of fileIndex.chunks) {
+                    processChunk(chunk, 1, fileIndex.filePath);
+                }
+            } catch (pErr) {
+                console.warn('Failed to parse line:', pErr);
             }
         }
 
@@ -86,7 +105,7 @@ async function main() {
 
         // Report Generation
         const report = `
-# Indexing Evaluation Report
+# Indexing Evaluation Report (NDJSON)
 
 ## General Stats
 - **Total Files**: ${stats.totalFiles}
@@ -108,6 +127,10 @@ ${maxDepthItems.slice(0, 5).map(i => `- [Depth ${i.depth}] **${i.name}** in \`${
 ### Most Linked Chunks (Detailed)
 ${maxChildrenItems.slice(0, 5).map(i => `- [Children ${i.count}] **${i.name}** in \`${i.file}\``).join('\n')}
 
+### Minimal Context Tokens (Sample)
+The following shows how deep chunks retrieve context from their parents (Hierarchy Field):
+${sampleItems.map(i => `- **${i.name}**: ${JSON.stringify(i.hierarchy)}`).join('\n')}
+
 ## Chunk Type Distribution
 ${Object.entries(stats.kindCounts)
                 .sort((a, b) => b[1] - a[1]) // Sort by frequency desc
@@ -118,7 +141,7 @@ ${Object.entries(stats.kindCounts)
         console.log(report);
 
         // Also save to a file
-        await fs.writeFile(path.join(__dirname, '..', 'indexing_report.md'), report);
+        await fs.promises.writeFile(path.join(__dirname, '..', 'indexing_report.md'), report);
 
     } catch (error) {
         console.error("Error evaluating index:", error);

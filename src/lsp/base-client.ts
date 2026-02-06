@@ -49,19 +49,24 @@ export class BaseLSPClient extends EventEmitter {
     logger.info(`Starting LSP server: ${this.config.command} ${this.config.args.join(' ')}`);
 
     try {
-      // Spawn the LSP server process
-      this.process = spawn(this.config.command, this.config.args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, ...this.config.env },
-      });
+      try {
+        // Spawn the LSP server process
+        this.process = spawn(this.config.command, this.config.args, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env, ...this.config.env },
+        });
 
-      this.state.processId = this.process.pid;
+        this.state.processId = this.process.pid;
 
-      // Handle process events
-      this.process.on('error', (error) => {
-        logger.error(`LSP server process error for ${this.config.language}:`, error);
-        this.emit('error', error);
-      });
+        // Handle process events
+        this.process.on('error', (error) => {
+          logger.error(`LSP server process error for ${this.config.language}:`, error);
+          // Don't re-throw, let the client logic handle connection failure
+        });
+      } catch (err) {
+        logger.error(`Failed to spawn server for ${this.config.language}:`, err);
+        throw err;
+      }
 
       this.process.on('exit', (code, signal) => {
         logger.info(`LSP server for ${this.config.language} exited with code ${code}, signal ${signal}`);
