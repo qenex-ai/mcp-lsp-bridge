@@ -62,6 +62,10 @@ import {
   SemanticChunkArgsSchema,
   handleSemanticChunk,
 } from './tools/semantic-chunking.js';
+import {
+  GeminiQueryArgsSchema,
+  handleGeminiQuery,
+} from './tools/gemini-query.js';
 
 /**
  * Create and configure the MCP server
@@ -385,6 +389,20 @@ export function createServer(workspaceRoot?: string): Server {
             required: ['filePath'],
           },
         },
+        {
+          name: 'gemini_query',
+          description: 'Ask a natural language question about the codebase. Uses the semantic index to find relevant code and prompts Gemini for an answer.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: 'The question to ask (e.g. "How does indexing work?")',
+              },
+            },
+            required: ['query'],
+          },
+        },
       ],
     };
   });
@@ -484,6 +502,13 @@ export function createServer(workspaceRoot?: string): Server {
         case 'semantic_chunk': {
           const parsed = SemanticChunkArgsSchema.parse(args);
           result = await handleSemanticChunk(parsed, clientManager);
+          break;
+        }
+
+        case 'gemini_query': {
+          const parsed = GeminiQueryArgsSchema.parse(args);
+          // Pass workspace root from clientManager
+          result = await handleGeminiQuery(parsed, clientManager.workspaceRootPath);
           break;
         }
 
