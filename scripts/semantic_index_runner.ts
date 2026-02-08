@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Concurrency limit for indexing
-const CONCURRENCY_LIMIT = 4;
+const CONCURRENCY_LIMIT = 24;
 const MAX_FILE_SIZE_BYTES = 500 * 1024; // 500KB
 
 async function main() {
@@ -65,108 +65,148 @@ async function main() {
 
     const outputStream = fsSync.createWriteStream(outputPath, { flags: 'a' });
 
-    try {
-        const files: string[] = [];
-        const excludeDirs = new Set([
-            'node_modules', '.git', 'dist', 'build', 'coverage', '.vscode', '.gemini',
-            'proc', 'sys', 'dev', 'run', 'boot', 'mnt', 'media', 'tmp', 'var', 'etc', 'usr', 'opt', 'srv', 'bin', 'sbin', 'lib', 'lib64',
-            '.mypy_cache', '.cache', '.npm', '.pip', '.cargo', '.rustup', '.terraform', '.pytest_cache', '__pycache__',
-            '.julia', 'doc', 'docs', 'site-packages', 'gems'
-        ]);
+    const excludeDirs = new Set([
+        'node_modules', '.git', 'dist', 'build', 'coverage', '.vscode', '.gemini',
+        'proc', 'sys', 'dev', 'run', 'boot', 'mnt', 'media', 'tmp', 'var', 'etc', 'usr', 'opt', 'srv', 'bin', 'sbin', 'lib', 'lib64',
+        '.mypy_cache', '.cache', '.npm', '.pip', '.cargo', '.rustup', '.terraform', '.pytest_cache', '__pycache__',
+        '.julia', 'doc', 'docs', 'site-packages', 'gems', 'azure-sdk-for-go', 'sdk',
+        '.nvm', '.local', 'snap', 'go', 'minio-binaries'
+    ]);
 
-        // Walk function
-        async function walk(dir: string) {
-            try {
-                const entries = await fs.readdir(dir, { withFileTypes: true });
-                for (const entry of entries) {
-                    const fullPath = path.join(dir, entry.name);
-                    if (entry.isDirectory()) {
-                        if (!excludeDirs.has(entry.name)) await walk(fullPath);
-                    } else if (entry.isFile()) {
-                        const ext = path.extname(entry.name).toLowerCase();
-                        if (supportedExtensions.has(ext)) {
-                            if (entry.name.endsWith('.ndjson') || entry.name.endsWith('.json') || entry.name.endsWith('.md')) {
-                                // Careful with our own outputs
-                                if (entry.name === 'semantic_index.ndjson' || entry.name === 'semantic_index.json' || entry.name === 'indexing_report.md') continue;
-                            }
-                            // RESUME CHECK
-                            if (processedFiles.has(fullPath)) {
-                                continue;
-                            }
-                            files.push(fullPath);
+    // Generator for walking directory
+    async function* walkGenerator(dir: string): AsyncGenerator<string> {
+        try {
+            const entries = await fs.readdir(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    if (!excludeDirs.has(entry.name)) {
+                        yield* walkGenerator(fullPath);
+                    }
+                } else if (entry.isFile()) {
+                    const ext = path.extname(entry.name).toLowerCase();
+                    const isSupported = supportedExtensions.has(ext);
+
+                    // Allow unexpected text files for "deeper" indexing too
+                    const isTextFile = ['.md', '.txt', '.yaml', '.yml', '.json', '.xml', '.html', '.css', '.sh', '.conf', '.ini', '.toml', '.lock'].includes(ext);
+
+                    if (isSupported || isTextFile) {
+                        if (entry.name.endsWith('.ndjson') || entry.name.endsWith('.json') && entry.name.includes('semantic_index')) {
+                            continue;
                         }
+                        // RESUME CHECK
+                        if (processedFiles.has(fullPath)) {
+                            continue;
+                        }
+                        yield fullPath;
                     }
                 }
-            } catch (err) {
-                logger.error(`Error walking ${dir}:`, err);
+            }
+        } catch (err) {
+            // logger.error(`Error walking ${dir}:`, err);
+        }
+    }
+
+    let completed = 0;
+    let errors = 0;
+    let pendingPromises: Promise<void>[] = [];
+
+    // Restart every N files to keep LSPs fresh
+    const RESTART_INTERVAL = 2000;
+    let filesSinceRestart = 0;
+
+    // Process file function
+    const processFile = async (file: string) => {
+        try {
+            // Check file size
+            const stats = await fs.stat(file);
+            if (stats.size > MAX_FILE_SIZE_BYTES) {
+                logger.warn(`Skipping large file ${path.relative(workspaceRoot, file)} (${stats.size} bytes)`);
+                return;
+            }
+
+            const resultJson = await Promise.race([
+                handleSemanticChunk({ filePath: file }, clientManager),
+                new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 130000))
+            ]);
+
+            const chunks = JSON.parse(resultJson);
+            if (chunks.length > 0) {
+                const record = {
+                    filePath: path.relative(workspaceRoot, file),
+                    chunks: chunks
+                };
+                // Write line to NDJSON
+                const line = JSON.stringify(record) + '\n';
+                if (!outputStream.write(line)) {
+                    await new Promise(resolve => outputStream.once('drain', resolve));
+                }
+            }
+        } catch (err) {
+            errors++;
+            const msg = err instanceof Error ? err.message : String(err);
+            if (!msg.includes('Unsupported file extension')) {
+                logger.error(`Failed to index ${path.relative(workspaceRoot, file)}: ${msg}`);
+            }
+        } finally {
+            completed++;
+            filesSinceRestart++;
+            if (completed % 10 === 0) {
+                logger.info(`Progress: ${completed} new files processed (Errors: ${errors})`);
+            }
+        }
+    };
+
+    try {
+        logger.info("Starting streaming walk...");
+
+        for await (const file of walkGenerator(workspaceRoot)) {
+            // Manage concurrency
+            while (pendingPromises.length >= CONCURRENCY_LIMIT) {
+                await Promise.race(pendingPromises);
+                pendingPromises = pendingPromises.filter(p => {
+                    // This is a bit hacky to check if promise is done, 
+                    // but we can just wait for one and then filter out completed ones if we tracked them.
+                    // Simpler: use a wrapper that removes itself.
+                    return false; // Re-building list below
+                });
+            }
+
+            // Create a wrapper promise that removes itself from the list when done
+            const p = processFile(file).then(() => {
+                pendingPromises = pendingPromises.filter(promise => promise !== p);
+            });
+            pendingPromises.push(p);
+
+            // Wait if we hit concurrency limit
+            if (pendingPromises.length >= CONCURRENCY_LIMIT) {
+                await Promise.race(pendingPromises);
+            }
+
+            // Periodic Restart
+            if (filesSinceRestart >= RESTART_INTERVAL) {
+                logger.info(`Restarting LSP clients after ${filesSinceRestart} files...`);
+                // Wait for current batch to finish
+                await Promise.all(pendingPromises);
+                pendingPromises = [];
+
+                // Restart
+                await clientManager.shutdown();
+                // ClientManager auto-restarts on next request, but we need to clear internal state if any
+                // The current implementation of ClientManager creates new clients on getClientForFile if they don't exist.
+                // Shutdown clears the map. So next call to handleSemanticChunk -> ensureDocumentOpen -> getClientForFile will create new.
+
+                filesSinceRestart = 0;
+                logger.info("LSP clients restarted.");
             }
         }
 
-        await walk(workspaceRoot);
-        logger.info(`Found ${files.length} files to index.`);
-
-        let completed = 0;
-        let errors = 0;
-
-        // Process files with concurrency limit
-        const processFile = async (file: string) => {
-            try {
-                // Check file size
-                const stats = await fs.stat(file);
-                if (stats.size > MAX_FILE_SIZE_BYTES) {
-                    logger.warn(`Skipping large file ${path.relative(workspaceRoot, file)} (${stats.size} bytes)`);
-                    return;
-                }
-
-                const resultJson = await Promise.race([
-                    handleSemanticChunk({ filePath: file }, clientManager),
-                    new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 60000))
-                ]);
-
-                const chunks = JSON.parse(resultJson);
-                if (chunks.length > 0) {
-                    const record = {
-                        filePath: path.relative(workspaceRoot, file),
-                        chunks: chunks
-                    };
-                    // Write line to NDJSON
-                    const line = JSON.stringify(record) + '\n';
-                    if (!outputStream.write(line)) {
-                        // Handle backpressure if needed (simple await drain)
-                        await new Promise(resolve => outputStream.once('drain', resolve));
-                    }
-                }
-            } catch (err) {
-                errors++;
-                const msg = err instanceof Error ? err.message : String(err);
-                if (!msg.includes('Unsupported file extension')) { // Ignore specific known noise
-                    logger.error(`Failed to index ${path.relative(workspaceRoot, file)}: ${msg}`);
-                }
-            } finally {
-                completed++;
-                if (completed % 10 === 0) {
-                    logger.info(`Progress: ${completed}/${files.length} (Errors: ${errors})`);
-                }
-            }
-        };
-
-        // Execution helper
-        const runBatch = async () => {
-            const queue = [...files];
-            const workers = Array(CONCURRENCY_LIMIT).fill(null).map(async () => {
-                while (queue.length > 0) {
-                    const file = queue.shift();
-                    if (file) await processFile(file);
-                }
-            });
-            await Promise.all(workers);
-        };
-
-        await runBatch();
+        // Wait for remaining
+        await Promise.all(pendingPromises);
 
         outputStream.end();
         logger.info(`Indexing complete. Saved to ${outputPath}`);
-        logger.info(`Total files processed: ${completed}/${files.length} (Errors: ${errors})`);
+        logger.info(`Total new files processed: ${completed} (Errors: ${errors})`);
 
     } catch (err) {
         logger.error('Indexing failed:', err);

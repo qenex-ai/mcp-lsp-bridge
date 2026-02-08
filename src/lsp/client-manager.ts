@@ -44,7 +44,9 @@ export class ClientManager {
   private async getClient(config: LSPServerConfig): Promise<BaseLSPClient> {
     const existing = this.clients.get(config.language);
 
-    if (existing && existing.isReady()) {
+    if (existing) {
+      // If it's initializing, we still want to reuse the same instance
+      // The requests will queue or fail, but we shouldn't spawn a new process
       return existing;
     }
 
