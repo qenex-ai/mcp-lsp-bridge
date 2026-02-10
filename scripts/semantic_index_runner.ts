@@ -70,7 +70,9 @@ async function main() {
         'proc', 'sys', 'dev', 'run', 'boot', 'mnt', 'media', 'tmp', 'var', 'etc', 'usr', 'opt', 'srv', 'bin', 'sbin', 'lib', 'lib64',
         '.mypy_cache', '.cache', '.npm', '.pip', '.cargo', '.rustup', '.terraform', '.pytest_cache', '__pycache__',
         '.julia', 'doc', 'docs', 'site-packages', 'gems', 'azure-sdk-for-go', 'sdk',
-        '.nvm', '.local', 'snap', 'go', 'minio-binaries'
+        '.nvm', '.local', 'snap', 'go', 'minio-binaries',
+        'data', 'backups', 'root', 'lost+found', '.azure',
+        'target', 'zig-cache', 'zig-out', '_build', 'deps'
     ]);
 
     // Generator for walking directory
@@ -164,12 +166,6 @@ async function main() {
             // Manage concurrency
             while (pendingPromises.length >= CONCURRENCY_LIMIT) {
                 await Promise.race(pendingPromises);
-                pendingPromises = pendingPromises.filter(p => {
-                    // This is a bit hacky to check if promise is done, 
-                    // but we can just wait for one and then filter out completed ones if we tracked them.
-                    // Simpler: use a wrapper that removes itself.
-                    return false; // Re-building list below
-                });
             }
 
             // Create a wrapper promise that removes itself from the list when done
